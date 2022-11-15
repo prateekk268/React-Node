@@ -1,108 +1,85 @@
+if (process.env.NODE_ENV != "production") {
+    require("dotenv").config()
+}
+
 const express = require("express");
-const {buildSchema} = require("graphql");
-const {graphqlHTTP} = require('express-graphql');
+const bcrypt = require("bcrypt");
+const passport = require("passport");
+const flash = require("express-flash");
+const session = require("express-session");
 const app = express();
 
+const initializePassport = require("./passport-config");
 
-/* 
-ID
-String
-Float
-Boolean
-list = []
-*/
-
-let message = "This is a message"
-
-const schema = buildSchema(`
-
-type Post {
-      userId : Int
-      id : Int
-      title : String
-      body : String
-}
-
-type User {
-    name : String
-    age : Int
-    college : String
-}
-
-type Query {
-    hello : String!
-    welcomeMessage(name: String, dayOfWeek : String!): String
-    getUser : User
-    getUsers : [User]
-    getPostsFromExternalAPI : [Post]
-    message : String
-}
-
-input UserInput {
-    name : String!
-    age : Int!
-    college : String!
-}
-
-type Mutation {
-    setMessage(newMessage : String): String
-    createUser(user : UserInput) : User
-}
-`)
+initializePassport(
+    passport,
+    (email) => users.find(users => users.email === email),
+    (id) => users.find(users.id === id)
+)
 
 
 
+const users = [];
 
-const root = {
-    hello : ()=> {
-        return "Hello world!!!"
-    },
-    welcomeMessage : args => {
-        console.log(args);
-        return `Hey ${args.name}, hows life, today is ${args.dayOfWeek}`
-    },
-    getUser : ()=> {
-        const user = {
-            name : "Prateek Kumar",
-            age : 24,
-            college : "SVIET"
-        };
-        return user
-    },
-    getUsers : ()=> {
-   const users = [
-    {
-        name : "Prateek",
-        age : 24,
-        college : "Sviet"
-    },
-    {
-        name : "Rahul",
-        age : 32,
-        college : "Mit"
-    },
-   ]
-   return users
-    },
-    getPostsFromExternalAPI : ()=> {
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }))
+app.set("view-engine", "ejs")
+app.use(flash());
+app.use(session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false
+}))
+app.use(passport.initialize())
 
-    },
-    setMessage : ({newMessage})=> {
-        message = newMessage
-        return message
-    },
-    message : ()=> message,
-    createUser : (args) => {
-        console.log(args);
-        return args.user;
+
+app.get("/", (req,res)=>{
+    res.send("hello again ")
+})
+
+app.get("/home", checkAuthenticated ,(req, res) => {
+    res.render("index.ejs", { name: "Prateek" });
+});
+
+app.get("/login", (req, res) => {
+    res.render("login.ejs");
+});
+
+app.get("/register", (req, res) => {
+    res.render("register.ejs");
+});
+
+app.post("/register", async (req, res) => {
+    try {
+        const hashedPassword = await bcrypt.hash(req.body.password, 10)
+        users.push({
+            id: Date.now().toString(),
+            name: req.body.name,
+            email: req.body.email,
+            password: hashedPassword
+        })
+        console.log(users);
+        return res.redirect("/login")
+    } catch (error) {
+        return res.redirect("/register");
     }
-};
 
-app.use("/graphql",graphqlHTTP({
-    graphiql : true,
-    schema : schema,
-    rootValue : root,
-}));
+});
 
+app.post("/login", passport.authenticate("local", {
+    successRedirect : "/home",
+    failureRedirect : "/login",
+    failureFlash : true
+}
+))
 
-app.listen(4000, ()=> console.log("Server on PORT : 4000"));
+function checkAuthenticated(req,res,next){
+    if(req.isAuthenticated()) return next();
+
+    res.redirect("/login"); 
+}
+
+const PORT = 3000;
+app.listen(PORT, () => {
+    console.log("Node is Running");
+})
